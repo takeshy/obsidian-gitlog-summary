@@ -1,0 +1,30 @@
+{
+  "name": "obsidian-gitlog-summary",
+  "version": "1.0.0",
+  "description": "Insert today's git log summary into your notes",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "lint": "eslint src/",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "git",
+    "git-log"
+  ],
+  "author": "takeshy",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^16.11.6",
+    "builtin-modules": "3.3.0",
+    "esbuild": "^0.25.2",
+    "eslint-plugin-obsidianmd": "^0.1.9",
+    "obsidian": "^1.10.0",
+    "tslib": "^2.4.0",
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.49.0"
+  }
+}
