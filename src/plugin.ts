@@ -7,11 +7,29 @@ const execAsync = promisify(exec);
 interface GitLogSettings {
   directories: string[];
   authorEmail: string;
+  // 出力フォーマット設定
+  commitsHeader: string;
+  commitFormat: string;
+  stagedHeader: string;
+  stagedFormat: string;
+  unstagedHeader: string;
+  unstagedFormat: string;
+  timestampFormat: string;
+  showSeparator: boolean;
 }
 
 const DEFAULT_SETTINGS: GitLogSettings = {
   directories: [],
   authorEmail: '',
+  // 出力フォーマットのデフォルト値
+  commitsHeader: '### Commits',
+  commitFormat: '- {time} [{repo}] {message}',
+  stagedHeader: '### Staged',
+  stagedFormat: '- [{repo}] {file}',
+  unstagedHeader: '### Unstaged',
+  unstagedFormat: '- [{repo}] {file}',
+  timestampFormat: '({timestamp})',
+  showSeparator: true,
 };
 
 export class GitLogSummaryPlugin extends Plugin {
@@ -125,20 +143,27 @@ export class GitLogSummaryPlugin extends Plugin {
 
     // コミット済み
     if (allLogs.length > 0) {
-      result.push('### Commits');
+      result.push(this.settings.commitsHeader);
       allLogs.sort((a, b) => a.time.localeCompare(b.time));
       for (const log of allLogs) {
-        result.push(`- ${log.time} [${log.repo}] ${log.message}`);
+        const formatted = this.settings.commitFormat
+          .replace('{time}', log.time)
+          .replace('{repo}', log.repo)
+          .replace('{message}', log.message);
+        result.push(formatted);
       }
     }
 
     // Staged
     if (stagedChanges.length > 0) {
       result.push('');
-      result.push('### Staged');
+      result.push(this.settings.stagedHeader);
       for (const change of stagedChanges) {
         for (const file of change.files) {
-          result.push(`- [${change.repo}] ${file}`);
+          const formatted = this.settings.stagedFormat
+            .replace('{repo}', change.repo)
+            .replace('{file}', file);
+          result.push(formatted);
         }
       }
     }
@@ -146,10 +171,13 @@ export class GitLogSummaryPlugin extends Plugin {
     // Unstaged
     if (unstagedChanges.length > 0) {
       result.push('');
-      result.push('### Unstaged');
+      result.push(this.settings.unstagedHeader);
       for (const change of unstagedChanges) {
         for (const file of change.files) {
-          result.push(`- [${change.repo}] ${file}`);
+          const formatted = this.settings.unstagedFormat
+            .replace('{repo}', change.repo)
+            .replace('{file}', file);
+          result.push(formatted);
         }
       }
     }
@@ -158,10 +186,13 @@ export class GitLogSummaryPlugin extends Plugin {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     result.push('');
-    result.push(`(${timestamp})`);
-    result.push('');
-    result.push('---');
-    result.push('');
+    const formattedTimestamp = this.settings.timestampFormat.replace('{timestamp}', timestamp);
+    result.push(formattedTimestamp);
+    if (this.settings.showSeparator) {
+      result.push('');
+      result.push('---');
+      result.push('');
+    }
 
     return result;
   }
@@ -210,5 +241,95 @@ class GitLogSettingTab extends PluginSettingTab {
         .filter(s => s.length > 0);
       await this.plugin.saveSettings();
     });
+
+    // 出力フォーマット設定
+    containerEl.createEl('h3', { text: 'Output format' });
+
+    new Setting(containerEl)
+      .setName('Commits header')
+      .setDesc('Header text for commits section')
+      .addText(text => text
+        .setPlaceholder('### Commits')
+        .setValue(this.plugin.settings.commitsHeader)
+        .onChange(async (value) => {
+          this.plugin.settings.commitsHeader = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Commit format')
+      .setDesc('Format for each commit. Placeholders: {time}, {repo}, {message}')
+      .addText(text => text
+        .setPlaceholder('- {time} [{repo}] {message}')
+        .setValue(this.plugin.settings.commitFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.commitFormat = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Staged header')
+      .setDesc('Header text for staged files section')
+      .addText(text => text
+        .setPlaceholder('### Staged')
+        .setValue(this.plugin.settings.stagedHeader)
+        .onChange(async (value) => {
+          this.plugin.settings.stagedHeader = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Staged format')
+      .setDesc('Format for each staged file. Placeholders: {repo}, {file}')
+      .addText(text => text
+        .setPlaceholder('- [{repo}] {file}')
+        .setValue(this.plugin.settings.stagedFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.stagedFormat = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Unstaged header')
+      .setDesc('Header text for unstaged files section')
+      .addText(text => text
+        .setPlaceholder('### Unstaged')
+        .setValue(this.plugin.settings.unstagedHeader)
+        .onChange(async (value) => {
+          this.plugin.settings.unstagedHeader = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Unstaged format')
+      .setDesc('Format for each unstaged file. Placeholders: {repo}, {file}')
+      .addText(text => text
+        .setPlaceholder('- [{repo}] {file}')
+        .setValue(this.plugin.settings.unstagedFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.unstagedFormat = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Timestamp format')
+      .setDesc('Format for timestamp. Placeholder: {timestamp}')
+      .addText(text => text
+        .setPlaceholder('({timestamp})')
+        .setValue(this.plugin.settings.timestampFormat)
+        .onChange(async (value) => {
+          this.plugin.settings.timestampFormat = value;
+          await this.plugin.saveSettings();
+        }));
+
+    new Setting(containerEl)
+      .setName('Show separator')
+      .setDesc('Show horizontal rule (---) after timestamp')
+      .addToggle(toggle => toggle
+        .setValue(this.plugin.settings.showSeparator)
+        .onChange(async (value) => {
+          this.plugin.settings.showSeparator = value;
+          await this.plugin.saveSettings();
+        }));
   }
 }
