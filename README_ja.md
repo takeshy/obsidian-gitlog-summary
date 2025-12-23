@@ -28,12 +28,94 @@
 - 09:30 [project-a] 新機能を追加
 - 10:45 [project-b] ログインのバグを修正
 
-### Staged 
+### Staged
 - [project-a] src/index.ts
 
 ### Unstaged
 - [project-b] README.md
 - [project-b] config.json (new)
+```
+
+## テンプレートのカスタマイズ
+
+出力フォーマットは設定画面で [Handlebars](https://handlebarsjs.com/) テンプレート構文を使ってカスタマイズできます。
+
+### 使用可能な変数
+
+| コンテキスト | 変数 |
+|---------|-----------|
+| コミット | `{{time}}`, `{{repo}}`, `{{message}}` |
+| Staged/Unstaged | `{{repo}}`, `{{file}}` |
+| グローバル | `{{timestamp}}` |
+
+### 組み込みヘルパー
+
+- `{{#if commits}}...{{/if}}` - 条件付きレンダリング
+- `{{#each commits}}...{{/each}}` - ループ
+- `{{#unless}}...{{/unless}}` - 否定条件
+- `{{else}}` - else 節
+
+### カスタムヘルパー
+
+- `{{#eq value "string"}}...{{else}}...{{/eq}}` - 等価比較
+- `{{#ne value "string"}}...{{/ne}}` - 非等価比較
+- `{{#contains value "substring"}}...{{/contains}}` - 文字列を含むかチェック
+
+### テンプレート例
+
+#### リポジトリ名を表示名に変換
+
+```handlebars
+{{#if commits}}
+### Commits
+{{#each commits}}
+- {{time}} [{{#eq repo "my-company-frontend"}}フロントエンド{{else}}{{#eq repo "my-company-api"}}バックエンドAPI{{else}}{{repo}}{{/eq}}{{/eq}}] {{message}}
+{{/each}}
+{{/if}}
+```
+
+出力：
+```markdown
+### Commits
+- 09:30 [フロントエンド] 新機能を追加
+- 10:45 [バックエンドAPI] 認証バグを修正
+- 11:00 [other-repo] ドキュメント更新
+```
+
+#### プロジェクトタイプ別にグループ化
+
+```handlebars
+{{#if commits}}
+### 開発
+{{#each commits}}
+{{#contains repo "app"}}
+- {{time}} {{message}} ({{repo}})
+{{/contains}}
+{{/each}}
+
+### インフラ
+{{#each commits}}
+{{#contains repo "infra"}}
+- {{time}} {{message}} ({{repo}})
+{{/contains}}
+{{/each}}
+{{/if}}
+```
+
+#### セクションなしのシンプルなフォーマット
+
+```handlebars
+## 今日の作業 ({{timestamp}})
+
+{{#each commits}}
+- {{time}} {{message}}
+{{/each}}
+{{#each staged}}
+- 📝 {{file}}
+{{/each}}
+{{#each unstaged}}
+- ⚠️ {{file}}
+{{/each}}
 ```
 
 ## インストール

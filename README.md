@@ -36,6 +36,88 @@ The plugin inserts a formatted summary like this:
 - [project-b] config.json (new)
 ```
 
+## Template Customization
+
+The output format can be customized using [Handlebars](https://handlebarsjs.com/) template syntax in the settings.
+
+### Available Variables
+
+| Context | Variables |
+|---------|-----------|
+| Commits | `{{time}}`, `{{repo}}`, `{{message}}` |
+| Staged/Unstaged | `{{repo}}`, `{{file}}` |
+| Global | `{{timestamp}}` |
+
+### Built-in Helpers
+
+- `{{#if commits}}...{{/if}}` - Conditional rendering
+- `{{#each commits}}...{{/each}}` - Loop over items
+- `{{#unless}}...{{/unless}}` - Negative conditional
+- `{{else}}` - Else clause
+
+### Custom Helpers
+
+- `{{#eq value "string"}}...{{else}}...{{/eq}}` - Equal comparison
+- `{{#ne value "string"}}...{{/ne}}` - Not equal comparison
+- `{{#contains value "substring"}}...{{/contains}}` - String contains check
+
+### Template Examples
+
+#### Convert repository names to display names
+
+```handlebars
+{{#if commits}}
+### Commits
+{{#each commits}}
+- {{time}} [{{#eq repo "my-company-frontend"}}Frontend{{else}}{{#eq repo "my-company-api"}}Backend API{{else}}{{repo}}{{/eq}}{{/eq}}] {{message}}
+{{/each}}
+{{/if}}
+```
+
+Output:
+```markdown
+### Commits
+- 09:30 [Frontend] Add new feature
+- 10:45 [Backend API] Fix authentication bug
+- 11:00 [other-repo] Update docs
+```
+
+#### Group by project type
+
+```handlebars
+{{#if commits}}
+### Development
+{{#each commits}}
+{{#contains repo "app"}}
+- {{time}} {{message}} ({{repo}})
+{{/contains}}
+{{/each}}
+
+### Infrastructure
+{{#each commits}}
+{{#contains repo "infra"}}
+- {{time}} {{message}} ({{repo}})
+{{/contains}}
+{{/each}}
+{{/if}}
+```
+
+#### Simple format without sections
+
+```handlebars
+## Today's Work ({{timestamp}})
+
+{{#each commits}}
+- {{time}} {{message}}
+{{/each}}
+{{#each staged}}
+- 📝 {{file}}
+{{/each}}
+{{#each unstaged}}
+- ⚠️ {{file}}
+{{/each}}
+```
+
 ## Installation
 
 ### Manual Installation
