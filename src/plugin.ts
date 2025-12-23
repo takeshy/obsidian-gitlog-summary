@@ -1,8 +1,25 @@
 import { Plugin, Editor, PluginSettingTab, App, Setting, Notice } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import Handlebars from 'handlebars';
 
 const execAsync = promisify(exec);
+
+// Register custom helpers
+Handlebars.registerHelper('eq', function(a, b, options) {
+  // @ts-expect-error Handlebars context
+  return a === b ? options.fn(this) : options.inverse(this);
+});
+
+Handlebars.registerHelper('ne', function(a, b, options) {
+  // @ts-expect-error Handlebars context
+  return a !== b ? options.fn(this) : options.inverse(this);
+});
+
+Handlebars.registerHelper('contains', function(str, substr, options) {
+  // @ts-expect-error Handlebars context
+  return String(str).includes(substr) ? options.fn(this) : options.inverse(this);
+});
 
 interface GitLogSettings {
   directories: string[];
@@ -10,26 +27,26 @@ interface GitLogSettings {
   outputTemplate: string;
 }
 
-const DEFAULT_TEMPLATE = `{{#commits}}
+const DEFAULT_TEMPLATE = `{{#if commits}}
 ### Commits
-{{#each}}
+{{#each commits}}
 - {{time}} [{{repo}}] {{message}}
 {{/each}}
-{{/commits}}
+{{/if}}
 
-{{#staged}}
+{{#if staged}}
 ### Staged
-{{#each}}
+{{#each staged}}
 - [{{repo}}] {{file}}
 {{/each}}
-{{/staged}}
+{{/if}}
 
-{{#unstaged}}
+{{#if unstaged}}
 ### Unstaged
-{{#each}}
+{{#each unstaged}}
 - [{{repo}}] {{file}}
 {{/each}}
-{{/unstaged}}
+{{/if}}
 
 ({{timestamp}})
 
@@ -147,55 +164,20 @@ export class GitLogSummaryPlugin extends Plugin {
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-    // Render template
-    return this.renderTemplate(this.settings.outputTemplate, {
-      commits: allLogs,
-      staged: stagedChanges,
-      unstaged: unstagedChanges,
-      timestamp,
-    });
-  }
-
-  renderTemplate(
-    template: string,
-    data: {
-      commits: { time: string; message: string; repo: string }[];
-      staged: { repo: string; file: string }[];
-      unstaged: { repo: string; file: string }[];
-      timestamp: string;
-    }
-  ): string {
-    let result = template;
-
-    // Process {{#section}}...{{/section}} blocks
-    const sections = ['commits', 'staged', 'unstaged'] as const;
-
-    for (const section of sections) {
-      const regex = new RegExp(`\\{\\{#${section}\\}\\}([\\s\\S]*?)\\{\\{/${section}\\}\\}`, 'g');
-      result = result.replace(regex, (_match, content: string) => {
-        const items = data[section];
-        if (items.length === 0) return '';
-
-        // Process {{#each}}...{{/each}} within the section
-        const eachRegex = /\{\{#each\}\}([\s\S]*?)\{\{\/each\}\}/g;
-        const processedContent = content.replace(eachRegex, (_eachMatch: string, itemTemplate: string) => {
-          return items.map((item: Record<string, string>) => {
-            let line = itemTemplate;
-            for (const [key, value] of Object.entries(item)) {
-              line = line.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), value);
-            }
-            return line;
-          }).join('');
-        });
-
-        return processedContent;
+    // Render template with Handlebars
+    try {
+      const template = Handlebars.compile(this.settings.outputTemplate);
+      return template({
+        commits: allLogs,
+        staged: stagedChanges,
+        unstaged: unstagedChanges,
+        timestamp,
       });
+    } catch (e) {
+      console.error('Template error:', e);
+      new Notice('Template error: ' + (e as Error).message);
+      return '';
     }
-
-    // Replace {{timestamp}}
-    result = result.replace(/\{\{timestamp\}\}/g, data.timestamp);
-
-    return result;
   }
 }
 
@@ -244,18 +226,18 @@ class GitLogSettingTab extends PluginSettingTab {
     });
 
     // 出力フォーマット設定
-    containerEl.createEl('h3', { text: 'Output format' });
+    containerEl.createEl('h3', { text: 'Output format (Handlebars)' });
 
     const formatDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
     formatDesc.innerHTML = `
-      <p>Template syntax:</p>
+      <p>Uses <a href="https://handlebarsjs.com/guide/" target="_blank">Handlebars</a> template syntax:</p>
       <ul>
-        <li><code>{{#commits}}...{{/commits}}</code> - Commits section (hidden if empty)</li>
-        <li><code>{{#staged}}...{{/staged}}</code> - Staged files section (hidden if empty)</li>
-        <li><code>{{#unstaged}}...{{/unstaged}}</code> - Unstaged files section (hidden if empty)</li>
-        <li><code>{{#each}}...{{/each}}</code> - Loop over items in section</li>
-        <li>Commit variables: <code>{{time}}</code>, <code>{{repo}}</code>, <code>{{message}}</code></li>
-        <li>File variables: <code>{{repo}}</code>, <code>{{file}}</code></li>
+        <li><code>{{#if commits}}...{{/if}}</code> - Show section if commits exist</li>
+        <li><code>{{#each commits}}...{{/each}}</code> - Loop over commits</li>
+        <li><code>{{#eq repo "my-repo"}}App Name{{else}}{{repo}}{{/eq}}</code> - Conditional by value</li>
+        <li><code>{{#contains repo "api"}}...{{/contains}}</code> - Check if contains string</li>
+        <li>Commit: <code>{{time}}</code>, <code>{{repo}}</code>, <code>{{message}}</code></li>
+        <li>File: <code>{{repo}}</code>, <code>{{file}}</code></li>
         <li><code>{{timestamp}}</code> - Current date/time</li>
       </ul>
     `;
