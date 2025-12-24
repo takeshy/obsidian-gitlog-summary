@@ -19,16 +19,16 @@ An Obsidian plugin that inserts today's git log summary into your notes.
 The plugin inserts a formatted summary like this:
 
 ```markdown
-### project-a
-#### Commits
+## project-a
+### Commits
 - 09:30 Add new feature
-#### Staged
+### Staged
 - src/index.ts
 
-### project-b
-#### Commits
+## project-b
+### Commits
 - 10:45 Fix bug in login
-#### Unstaged
+### Unstaged
 - README.md
 - config.json (new)
 
@@ -55,6 +55,7 @@ The output format can be customized using [Handlebars](https://handlebarsjs.com/
 - `{{#each commits}}...{{/each}}` - Loop over items
 - `{{#unless}}...{{/unless}}` - Negative conditional
 - `{{else}}` - Else clause
+- `{{~` / `~}}` - Trim whitespace (e.g., `{{/each~}}` removes trailing newline)
 
 ### Custom Helpers
 
@@ -82,68 +83,67 @@ This example groups commits by repository, then by type (Bug fixes, Design, Feat
 - Display names (`frontend`, `backend`) can be customized in the `{{#eq}}` blocks
 
 ```handlebars
-{{#each repositories}}
+{{#each repositories~}}
 {{#if (or commits staged unstaged)}}
-### {{#eq name "my-app"}}frontend{{else}}{{#eq name "api-server"}}backend{{else}}{{name}}{{/eq}}{{/eq}}
+## {{#eq name "my-app"}}frontend{{else}}{{#eq name "api-server"}}backend{{else}}{{name}}{{/eq}}{{/eq}}
 {{#some commits messageStartsWith="fix"}}
-#### Bug fixes
-{{#each commits}}
-{{#startsWith message "fix"}}
+### Bug fixes
+{{#each commits~}}
+{{#startsWith message "fix"~}}
 - {{time}} {{message}}
-{{/startsWith}}
+{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#some commits messageStartsWith="design"}}
-#### Design
-{{#each commits}}
-{{#startsWith message "design"}}
+### Design
+{{#each commits~}}
+{{#startsWith message "design"~}}
 - {{time}} {{message}}
-{{/startsWith}}
+{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#some commits messageNotStartsWithAny="fix,design"}}
-#### Features
-{{#each commits}}
-{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+### Features
+{{#each commits~}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else~}}
 - {{time}} {{message}}
-{{/startsWith}}{{/startsWith}}
+{{/startsWith}}{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#if staged}}
-#### Staged
-{{#each staged}}
+### Staged
+{{#each staged~}}
 - {{file}}
 {{/each}}
-{{/if}}
+{{/if~}}
 {{#if unstaged}}
-#### Unstaged
-{{#each unstaged}}
+### Unstaged
+{{#each unstaged~}}
 - {{file}}
 {{/each}}
 {{/if}}
-{{/if}}
+{{/if~}}
 {{/each}}
-
 ({{timestamp}})
 ```
 
 Output:
 ```markdown
-### frontend
-#### Bug fixes
+## frontend
+### Bug fixes
 - 10:30 fix: resolve login issue
 - 14:00 fix: handle null pointer
-#### Design
+### Design
 - 11:00 design: update button styles
-#### Features
+### Features
 - 09:00 add user profile page
-#### Staged
+### Staged
 - src/components/Button.tsx
 
-### backend
-#### Features
+## backend
+### Features
 - 12:00 add health check endpoint
-#### Unstaged
+### Unstaged
 - README.md
 
 (2024-01-15 16:30)

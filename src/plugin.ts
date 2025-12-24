@@ -64,28 +64,28 @@ interface GitLogSettings {
   outputTemplate: string;
 }
 
-const DEFAULT_TEMPLATE = `{{#each repositories}}
+const DEFAULT_TEMPLATE = `{{#each repositories~}}
 {{#if (or commits staged unstaged)}}
-### {{name}}
+## {{name}}
 {{#if commits}}
-#### Commits
-{{#each commits}}
+### Commits
+{{#each commits~}}
 - {{time}} {{message}}
 {{/each}}
-{{/if}}
+{{/if~}}
 {{#if staged}}
-#### Staged
-{{#each staged}}
+### Staged
+{{#each staged~}}
 - {{file}}
 {{/each}}
-{{/if}}
+{{/if~}}
 {{#if unstaged}}
-#### Unstaged
-{{#each unstaged}}
+### Unstaged
+{{#each unstaged~}}
 - {{file}}
 {{/each}}
 {{/if}}
-{{/if}}
+{{/if~}}
 {{/each}}
 ({{timestamp}})
 

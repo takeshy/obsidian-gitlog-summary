@@ -19,16 +19,16 @@
 以下のような形式でサマリーが挿入されます：
 
 ```markdown
-### project-a
-#### Commits
+## project-a
+### Commits
 - 09:30 新機能を追加
-#### Staged
+### Staged
 - src/index.ts
 
-### project-b
-#### Commits
+## project-b
+### Commits
 - 10:45 ログインのバグを修正
-#### Unstaged
+### Unstaged
 - README.md
 - config.json (new)
 
@@ -55,6 +55,7 @@
 - `{{#each commits}}...{{/each}}` - ループ
 - `{{#unless}}...{{/unless}}` - 否定条件
 - `{{else}}` - else 節
+- `{{~` / `~}}` - 空白を削除（例: `{{/each~}}` で末尾の改行を削除）
 
 ### カスタムヘルパー
 
@@ -82,68 +83,67 @@
 - 表示名（`フロントエンド`、`バックエンド`）は `{{#eq}}` ブロック内でカスタマイズ可能です
 
 ```handlebars
-{{#each repositories}}
+{{#each repositories~}}
 {{#if (or commits staged unstaged)}}
-### {{#eq name "my-app"}}フロントエンド{{else}}{{#eq name "api-server"}}バックエンド{{else}}{{name}}{{/eq}}{{/eq}}
+## {{#eq name "my-app"}}フロントエンド{{else}}{{#eq name "api-server"}}バックエンド{{else}}{{name}}{{/eq}}{{/eq}}
 {{#some commits messageStartsWith="fix"}}
-#### バグ修正
-{{#each commits}}
-{{#startsWith message "fix"}}
+### バグ修正
+{{#each commits~}}
+{{#startsWith message "fix"~}}
 - {{time}} {{message}}
-{{/startsWith}}
+{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#some commits messageStartsWith="design"}}
-#### デザイン
-{{#each commits}}
-{{#startsWith message "design"}}
+### デザイン
+{{#each commits~}}
+{{#startsWith message "design"~}}
 - {{time}} {{message}}
-{{/startsWith}}
+{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#some commits messageNotStartsWithAny="fix,design"}}
-#### 機能追加
-{{#each commits}}
-{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+### 機能追加
+{{#each commits~}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else~}}
 - {{time}} {{message}}
-{{/startsWith}}{{/startsWith}}
+{{/startsWith}}{{/startsWith~}}
 {{/each}}
-{{/some}}
+{{/some~}}
 {{#if staged}}
-#### Staged
-{{#each staged}}
+### Staged
+{{#each staged~}}
 - {{file}}
 {{/each}}
-{{/if}}
+{{/if~}}
 {{#if unstaged}}
-#### Unstaged
-{{#each unstaged}}
+### Unstaged
+{{#each unstaged~}}
 - {{file}}
 {{/each}}
 {{/if}}
-{{/if}}
+{{/if~}}
 {{/each}}
-
 ({{timestamp}})
 ```
 
 出力：
 ```markdown
-### フロントエンド
-#### バグ修正
+## フロントエンド
+### バグ修正
 - 10:30 fix: ログイン問題を解決
 - 14:00 fix: null ポインタを処理
-#### デザイン
+### デザイン
 - 11:00 design: ボタンスタイルを更新
-#### 機能追加
+### 機能追加
 - 09:00 ユーザープロフィールページを追加
-#### Staged
+### Staged
 - src/components/Button.tsx
 
-### バックエンド
-#### 機能追加
+## バックエンド
+### 機能追加
 - 12:00 ヘルスチェックエンドポイントを追加
-#### Unstaged
+### Unstaged
 - README.md
 
 (2024-01-15 16:30)
