@@ -1,24 +1,30 @@
 import { Plugin, Editor, PluginSettingTab, App, Setting, Notice } from 'obsidian';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import Handlebars from 'handlebars';
+import * as Handlebars from 'handlebars';
 
 const execAsync = promisify(exec);
 
 // Register custom helpers
-Handlebars.registerHelper('eq', function(a, b, options) {
-  // @ts-expect-error Handlebars context
+Handlebars.registerHelper('eq', function(this: unknown, a: unknown, b: unknown, options: Handlebars.HelperOptions) {
   return a === b ? options.fn(this) : options.inverse(this);
 });
 
-Handlebars.registerHelper('ne', function(a, b, options) {
-  // @ts-expect-error Handlebars context
+Handlebars.registerHelper('ne', function(this: unknown, a: unknown, b: unknown, options: Handlebars.HelperOptions) {
   return a !== b ? options.fn(this) : options.inverse(this);
 });
 
-Handlebars.registerHelper('contains', function(str, substr, options) {
-  // @ts-expect-error Handlebars context
+Handlebars.registerHelper('contains', function(this: unknown, str: unknown, substr: string, options: Handlebars.HelperOptions) {
   return String(str).includes(substr) ? options.fn(this) : options.inverse(this);
+});
+
+Handlebars.registerHelper('startsWith', function(this: unknown, str: unknown, prefix: string, options: Handlebars.HelperOptions) {
+  return String(str).startsWith(prefix) ? options.fn(this) : options.inverse(this);
+});
+
+Handlebars.registerHelper('array', function(...args: unknown[]) {
+  // Remove the last argument (Handlebars options object)
+  return args.slice(0, -1);
 });
 
 interface GitLogSettings {
@@ -226,7 +232,7 @@ class GitLogSettingTab extends PluginSettingTab {
     });
 
     // 出力フォーマット設定
-    containerEl.createEl('h3', { text: 'Output format (Handlebars)' });
+    containerEl.createEl('h3', { text: 'Output format' });
 
     const formatDesc = containerEl.createEl('div', { cls: 'setting-item-description' });
     formatDesc.innerHTML = `
@@ -234,8 +240,10 @@ class GitLogSettingTab extends PluginSettingTab {
       <ul>
         <li><code>{{#if commits}}...{{/if}}</code> - Show section if commits exist</li>
         <li><code>{{#each commits}}...{{/each}}</code> - Loop over commits</li>
-        <li><code>{{#eq repo "my-repo"}}App Name{{else}}{{repo}}{{/eq}}</code> - Conditional by value</li>
-        <li><code>{{#contains repo "api"}}...{{/contains}}</code> - Check if contains string</li>
+        <li><code>{{#each (array "a" "b")}}...{{/each}}</code> - Loop over inline array</li>
+        <li><code>{{#eq repo "my-repo"}}...{{/eq}}</code> - Equal comparison</li>
+        <li><code>{{#contains message "api"}}...{{/contains}}</code> - Check if contains string</li>
+        <li><code>{{#startsWith message "fix"}}...{{/startsWith}}</code> - Check if starts with</li>
         <li>Commit: <code>{{time}}</code>, <code>{{repo}}</code>, <code>{{message}}</code></li>
         <li>File: <code>{{repo}}</code>, <code>{{file}}</code></li>
         <li><code>{{timestamp}}</code> - Current date/time</li>

@@ -60,62 +60,115 @@
 - `{{#eq value "string"}}...{{else}}...{{/eq}}` - 等価比較
 - `{{#ne value "string"}}...{{/ne}}` - 非等価比較
 - `{{#contains value "substring"}}...{{/contains}}` - 文字列を含むかチェック
+- `{{#startsWith value "prefix"}}...{{/startsWith}}` - 文字列が指定の接頭辞で始まるかチェック
+- `(array "a" "b" "c")` - `{{#each}}` で使用するインライン配列を作成
 
 ### テンプレート例
 
-#### リポジトリ名を表示名に変換
+#### コミットをタイプとリポジトリ別にグループ化
+
+この例では、コミットをバグ修正、デザイン、機能追加に分類し、さらにリポジトリ別にグループ化します。
+
+**前提条件：**
+- `"my-app"` と `"api-server"` は実際のリポジトリディレクトリ名に置き換えてください
+- コミットはメッセージの接頭辞で分類されます：
+  - `fix` で始まる → バグ修正
+  - `design` で始まる → デザイン
+  - その他 → 機能追加
+- 表示名（`フロントエンド`、`バックエンド`）は `{{#eq}}` ブロック内でカスタマイズ可能です
 
 ```handlebars
 {{#if commits}}
-### Commits
-{{#each commits}}
-- {{time}} [{{#eq repo "my-company-frontend"}}フロントエンド{{else}}{{#eq repo "my-company-api"}}バックエンドAPI{{else}}{{repo}}{{/eq}}{{/eq}}] {{message}}
+### バグ修正
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "fix"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/eq}}
+{{/each}}
+{{/each}}
+
+### デザイン
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "design"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/eq}}
+{{/each}}
+{{/each}}
+
+### 機能追加
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+- {{time}} {{message}}
+{{/startsWith}}{{/startsWith}}
+{{/eq}}
+{{/each}}
 {{/each}}
 {{/if}}
+
+{{#if staged}}
+### Staged
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../staged}}
+{{#eq repo ../this}}
+- {{file}}
+{{/eq}}
+{{/each}}
+{{/each}}
+{{/if}}
+
+{{#if unstaged}}
+### Unstaged
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../unstaged}}
+{{#eq repo ../this}}
+- {{file}}
+{{/eq}}
+{{/each}}
+{{/each}}
+{{/if}}
+
+({{timestamp}})
 ```
 
 出力：
 ```markdown
-### Commits
-- 09:30 [フロントエンド] 新機能を追加
-- 10:45 [バックエンドAPI] 認証バグを修正
-- 11:00 [other-repo] ドキュメント更新
-```
+### バグ修正
+#### フロントエンド
+- 10:30 fix: ログイン問題を解決
+- 14:00 fix: null ポインタを処理
 
-#### プロジェクトタイプ別にグループ化
+### デザイン
+#### フロントエンド
+- 11:00 design: ボタンスタイルを更新
 
-```handlebars
-{{#if commits}}
-### 開発
-{{#each commits}}
-{{#contains repo "app"}}
-- {{time}} {{message}} ({{repo}})
-{{/contains}}
-{{/each}}
+### 機能追加
+#### フロントエンド
+- 09:00 ユーザープロフィールページを追加
+#### バックエンド
+- 12:00 ヘルスチェックエンドポイントを追加
 
-### インフラ
-{{#each commits}}
-{{#contains repo "infra"}}
-- {{time}} {{message}} ({{repo}})
-{{/contains}}
-{{/each}}
-{{/if}}
-```
+### Staged
+#### フロントエンド
+- src/components/Button.tsx
 
-#### セクションなしのシンプルなフォーマット
+### Unstaged
+#### バックエンド
+- README.md
 
-```handlebars
-## 今日の作業 ({{timestamp}})
-
-{{#each commits}}
-- {{time}} {{message}}
-{{/each}}
-{{#each staged}}
-- 📝 {{file}}
-{{/each}}
-{{#each unstaged}}
-- ⚠️ {{file}}
-{{/each}}
+(2024-01-15 16:30)
 ```
 
 ## インストール

@@ -60,62 +60,115 @@ The output format can be customized using [Handlebars](https://handlebarsjs.com/
 - `{{#eq value "string"}}...{{else}}...{{/eq}}` - Equal comparison
 - `{{#ne value "string"}}...{{/ne}}` - Not equal comparison
 - `{{#contains value "substring"}}...{{/contains}}` - String contains check
+- `{{#startsWith value "prefix"}}...{{/startsWith}}` - String starts with check
+- `(array "a" "b" "c")` - Create inline array for use with `{{#each}}`
 
 ### Template Examples
 
-#### Convert repository names to display names
+#### Group commits by type and repository
+
+This example groups commits into Bug fixes, Design, and Features, then by repository.
+
+**Prerequisites:**
+- Replace `"my-app"` and `"api-server"` with your actual repository directory names
+- Commits are categorized by message prefix:
+  - `fix` prefix → Bug fixes
+  - `design` prefix → Design
+  - Other → Features
+- Display names (`frontend`, `backend`) can be customized in the `{{#eq}}` blocks
 
 ```handlebars
 {{#if commits}}
-### Commits
-{{#each commits}}
-- {{time}} [{{#eq repo "my-company-frontend"}}Frontend{{else}}{{#eq repo "my-company-api"}}Backend API{{else}}{{repo}}{{/eq}}{{/eq}}] {{message}}
+### Bug fixes
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "fix"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/eq}}
+{{/each}}
+{{/each}}
+
+### Design
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "design"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/eq}}
+{{/each}}
+{{/each}}
+
+### Features
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../commits}}
+{{#eq repo ../this}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+- {{time}} {{message}}
+{{/startsWith}}{{/startsWith}}
+{{/eq}}
+{{/each}}
 {{/each}}
 {{/if}}
+
+{{#if staged}}
+### Staged
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../staged}}
+{{#eq repo ../this}}
+- {{file}}
+{{/eq}}
+{{/each}}
+{{/each}}
+{{/if}}
+
+{{#if unstaged}}
+### Unstaged
+{{#each (array "my-app" "api-server")}}
+#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
+{{#each ../unstaged}}
+{{#eq repo ../this}}
+- {{file}}
+{{/eq}}
+{{/each}}
+{{/each}}
+{{/if}}
+
+({{timestamp}})
 ```
 
 Output:
 ```markdown
-### Commits
-- 09:30 [Frontend] Add new feature
-- 10:45 [Backend API] Fix authentication bug
-- 11:00 [other-repo] Update docs
-```
+### Bug fixes
+#### frontend
+- 10:30 fix: resolve login issue
+- 14:00 fix: handle null pointer
 
-#### Group by project type
+### Design
+#### frontend
+- 11:00 design: update button styles
 
-```handlebars
-{{#if commits}}
-### Development
-{{#each commits}}
-{{#contains repo "app"}}
-- {{time}} {{message}} ({{repo}})
-{{/contains}}
-{{/each}}
+### Features
+#### frontend
+- 09:00 add user profile page
+#### backend
+- 12:00 add health check endpoint
 
-### Infrastructure
-{{#each commits}}
-{{#contains repo "infra"}}
-- {{time}} {{message}} ({{repo}})
-{{/contains}}
-{{/each}}
-{{/if}}
-```
+### Staged
+#### frontend
+- src/components/Button.tsx
 
-#### Simple format without sections
+### Unstaged
+#### backend
+- README.md
 
-```handlebars
-## Today's Work ({{timestamp}})
-
-{{#each commits}}
-- {{time}} {{message}}
-{{/each}}
-{{#each staged}}
-- 📝 {{file}}
-{{/each}}
-{{#each unstaged}}
-- ⚠️ {{file}}
-{{/each}}
+(2024-01-15 16:30)
 ```
 
 ## Installation
