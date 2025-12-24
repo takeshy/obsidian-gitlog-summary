@@ -2,12 +2,7 @@
 
 今日の Git ログをノートに挿入する Obsidian プラグインです。
 
-## スクリーンショット
-
-### 使用例
-![使用例](image.png)
-
-### 設定画面
+## 設定画面
 ![設定画面](settings.png)
 
 ## 機能
@@ -24,16 +19,20 @@
 以下のような形式でサマリーが挿入されます：
 
 ```markdown
-### Commits
-- 09:30 [project-a] 新機能を追加
-- 10:45 [project-b] ログインのバグを修正
+### project-a
+#### Commits
+- 09:30 新機能を追加
+#### Staged
+- src/index.ts
 
-### Staged
-- [project-a] src/index.ts
+### project-b
+#### Commits
+- 10:45 ログインのバグを修正
+#### Unstaged
+- README.md
+- config.json (new)
 
-### Unstaged
-- [project-b] README.md
-- [project-b] config.json (new)
+(2024-01-15 16:30)
 ```
 
 ## テンプレートのカスタマイズ
@@ -46,7 +45,9 @@
 |---------|-----------|
 | コミット | `{{time}}`, `{{repo}}`, `{{message}}` |
 | Staged/Unstaged | `{{repo}}`, `{{file}}` |
-| グローバル | `{{timestamp}}` |
+| グローバル | `{{repositories}}`, `{{timestamp}}` |
+
+- `{{repositories}}` - リポジトリオブジェクトの配列。各要素は `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}` を持つ
 
 ### 組み込みヘルパー
 
@@ -62,15 +63,18 @@
 - `{{#contains value "substring"}}...{{/contains}}` - 文字列を含むかチェック
 - `{{#startsWith value "prefix"}}...{{/startsWith}}` - 文字列が指定の接頭辞で始まるかチェック
 - `(array "a" "b" "c")` - `{{#each}}` で使用するインライン配列を作成
+- `{{#some array field="value"}}...{{/some}}` - 条件に一致するアイテムがあるかチェック
+  - `fieldStartsWith="prefix"` - プレフィックスマッチング（例: `messageStartsWith="fix"`）
+  - `fieldNotStartsWithAny="a,b"` - 複数のプレフィックスを除外
+- `(or a b c)` - いずれかの値が truthy なら true を返す（配列の場合は length > 0 をチェック）
 
 ### テンプレート例
 
-#### コミットをタイプとリポジトリ別にグループ化
+#### コミットをリポジトリとタイプ別にグループ化
 
-この例では、コミットをバグ修正、デザイン、機能追加に分類し、さらにリポジトリ別にグループ化します。
+この例では、コミットをリポジトリ別に分け、さらにバグ修正、デザイン、機能追加に分類します。
 
 **前提条件：**
-- `"my-app"` と `"api-server"` は実際のリポジトリディレクトリ名に置き換えてください
 - コミットはメッセージの接頭辞で分類されます：
   - `fix` で始まる → バグ修正
   - `design` で始まる → デザイン
@@ -78,94 +82,68 @@
 - 表示名（`フロントエンド`、`バックエンド`）は `{{#eq}}` ブロック内でカスタマイズ可能です
 
 ```handlebars
-{{#if commits}}
-### バグ修正
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{#each repositories}}
+{{#if (or commits staged unstaged)}}
+### {{#eq name "my-app"}}フロントエンド{{else}}{{#eq name "api-server"}}バックエンド{{else}}{{name}}{{/eq}}{{/eq}}
+{{#some commits messageStartsWith="fix"}}
+#### バグ修正
+{{#each commits}}
 {{#startsWith message "fix"}}
 - {{time}} {{message}}
 {{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-
-### デザイン
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{/some}}
+{{#some commits messageStartsWith="design"}}
+#### デザイン
+{{#each commits}}
 {{#startsWith message "design"}}
 - {{time}} {{message}}
 {{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-
-### 機能追加
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{/some}}
+{{#some commits messageNotStartsWithAny="fix,design"}}
+#### 機能追加
+{{#each commits}}
 {{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
 - {{time}} {{message}}
 {{/startsWith}}{{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-{{/if}}
-
+{{/some}}
 {{#if staged}}
-### Staged
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../staged}}
-{{#eq repo ../this}}
+#### Staged
+{{#each staged}}
 - {{file}}
-{{/eq}}
-{{/each}}
 {{/each}}
 {{/if}}
-
 {{#if unstaged}}
-### Unstaged
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}フロントエンド{{else}}{{#eq this "api-server"}}バックエンド{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../unstaged}}
-{{#eq repo ../this}}
+#### Unstaged
+{{#each unstaged}}
 - {{file}}
-{{/eq}}
-{{/each}}
 {{/each}}
 {{/if}}
+{{/if}}
+{{/each}}
 
 ({{timestamp}})
 ```
 
 出力：
 ```markdown
-### バグ修正
-#### フロントエンド
+### フロントエンド
+#### バグ修正
 - 10:30 fix: ログイン問題を解決
 - 14:00 fix: null ポインタを処理
-
-### デザイン
-#### フロントエンド
+#### デザイン
 - 11:00 design: ボタンスタイルを更新
-
-### 機能追加
-#### フロントエンド
+#### 機能追加
 - 09:00 ユーザープロフィールページを追加
-#### バックエンド
-- 12:00 ヘルスチェックエンドポイントを追加
-
-### Staged
-#### フロントエンド
+#### Staged
 - src/components/Button.tsx
 
-### Unstaged
-#### バックエンド
+### バックエンド
+#### 機能追加
+- 12:00 ヘルスチェックエンドポイントを追加
+#### Unstaged
 - README.md
 
 (2024-01-15 16:30)

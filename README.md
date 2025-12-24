@@ -2,12 +2,7 @@
 
 An Obsidian plugin that inserts today's git log summary into your notes.
 
-## Screenshots
-
-### Usage
-![Usage](image.png)
-
-### Settings
+## Settings
 ![Settings](settings.png)
 
 ## Features
@@ -24,16 +19,20 @@ An Obsidian plugin that inserts today's git log summary into your notes.
 The plugin inserts a formatted summary like this:
 
 ```markdown
-### Commits
-- 09:30 [project-a] Add new feature
-- 10:45 [project-b] Fix bug in login
+### project-a
+#### Commits
+- 09:30 Add new feature
+#### Staged
+- src/index.ts
 
-### Staged
-- [project-a] src/index.ts
+### project-b
+#### Commits
+- 10:45 Fix bug in login
+#### Unstaged
+- README.md
+- config.json (new)
 
-### Unstaged
-- [project-b] README.md
-- [project-b] config.json (new)
+(2024-01-15 16:30)
 ```
 
 ## Template Customization
@@ -46,7 +45,9 @@ The output format can be customized using [Handlebars](https://handlebarsjs.com/
 |---------|-----------|
 | Commits | `{{time}}`, `{{repo}}`, `{{message}}` |
 | Staged/Unstaged | `{{repo}}`, `{{file}}` |
-| Global | `{{timestamp}}` |
+| Global | `{{repositories}}`, `{{timestamp}}` |
+
+- `{{repositories}}` - Array of repository objects, each with `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}`
 
 ### Built-in Helpers
 
@@ -62,15 +63,18 @@ The output format can be customized using [Handlebars](https://handlebarsjs.com/
 - `{{#contains value "substring"}}...{{/contains}}` - String contains check
 - `{{#startsWith value "prefix"}}...{{/startsWith}}` - String starts with check
 - `(array "a" "b" "c")` - Create inline array for use with `{{#each}}`
+- `{{#some array field="value"}}...{{/some}}` - Check if any item matches conditions
+  - `fieldStartsWith="prefix"` - prefix matching (e.g., `messageStartsWith="fix"`)
+  - `fieldNotStartsWithAny="a,b"` - exclude multiple prefixes
+- `(or a b c)` - Returns true if any value is truthy (for arrays, checks length > 0)
 
 ### Template Examples
 
-#### Group commits by type and repository
+#### Group commits by repository and type
 
-This example groups commits into Bug fixes, Design, and Features, then by repository.
+This example groups commits by repository, then by type (Bug fixes, Design, Features).
 
 **Prerequisites:**
-- Replace `"my-app"` and `"api-server"` with your actual repository directory names
 - Commits are categorized by message prefix:
   - `fix` prefix → Bug fixes
   - `design` prefix → Design
@@ -78,94 +82,68 @@ This example groups commits into Bug fixes, Design, and Features, then by reposi
 - Display names (`frontend`, `backend`) can be customized in the `{{#eq}}` blocks
 
 ```handlebars
-{{#if commits}}
-### Bug fixes
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{#each repositories}}
+{{#if (or commits staged unstaged)}}
+### {{#eq name "my-app"}}frontend{{else}}{{#eq name "api-server"}}backend{{else}}{{name}}{{/eq}}{{/eq}}
+{{#some commits messageStartsWith="fix"}}
+#### Bug fixes
+{{#each commits}}
 {{#startsWith message "fix"}}
 - {{time}} {{message}}
 {{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-
-### Design
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{/some}}
+{{#some commits messageStartsWith="design"}}
+#### Design
+{{#each commits}}
 {{#startsWith message "design"}}
 - {{time}} {{message}}
 {{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-
-### Features
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../commits}}
-{{#eq repo ../this}}
+{{/some}}
+{{#some commits messageNotStartsWithAny="fix,design"}}
+#### Features
+{{#each commits}}
 {{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
 - {{time}} {{message}}
 {{/startsWith}}{{/startsWith}}
-{{/eq}}
 {{/each}}
-{{/each}}
-{{/if}}
-
+{{/some}}
 {{#if staged}}
-### Staged
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../staged}}
-{{#eq repo ../this}}
+#### Staged
+{{#each staged}}
 - {{file}}
-{{/eq}}
-{{/each}}
 {{/each}}
 {{/if}}
-
 {{#if unstaged}}
-### Unstaged
-{{#each (array "my-app" "api-server")}}
-#### {{#eq this "my-app"}}frontend{{else}}{{#eq this "api-server"}}backend{{else}}{{this}}{{/eq}}{{/eq}}
-{{#each ../unstaged}}
-{{#eq repo ../this}}
+#### Unstaged
+{{#each unstaged}}
 - {{file}}
-{{/eq}}
-{{/each}}
 {{/each}}
 {{/if}}
+{{/if}}
+{{/each}}
 
 ({{timestamp}})
 ```
 
 Output:
 ```markdown
-### Bug fixes
-#### frontend
+### frontend
+#### Bug fixes
 - 10:30 fix: resolve login issue
 - 14:00 fix: handle null pointer
-
-### Design
-#### frontend
+#### Design
 - 11:00 design: update button styles
-
-### Features
-#### frontend
+#### Features
 - 09:00 add user profile page
-#### backend
-- 12:00 add health check endpoint
-
-### Staged
-#### frontend
+#### Staged
 - src/components/Button.tsx
 
-### Unstaged
-#### backend
+### backend
+#### Features
+- 12:00 add health check endpoint
+#### Unstaged
 - README.md
 
 (2024-01-15 16:30)

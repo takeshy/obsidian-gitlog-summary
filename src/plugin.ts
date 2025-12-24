@@ -27,33 +27,66 @@ Handlebars.registerHelper('array', function(...args: unknown[]) {
   return args.slice(0, -1);
 });
 
+Handlebars.registerHelper('or', function(...args: unknown[]) {
+  // Remove the last argument (Handlebars options object)
+  const values = args.slice(0, -1);
+  return values.some(v => Array.isArray(v) ? v.length > 0 : Boolean(v));
+});
+
+Handlebars.registerHelper('some', function(this: unknown, array: unknown[], options: Handlebars.HelperOptions) {
+  if (!Array.isArray(array)) return options.inverse(this);
+  const hash = options.hash as Record<string, string>;
+  const hasMatch = array.some(item => {
+    const record = item as Record<string, string>;
+    for (const [key, value] of Object.entries(hash)) {
+      // Support "fieldStartsWith" syntax (e.g., messageStartsWith="fix")
+      if (key.endsWith('StartsWith')) {
+        const field = key.replace('StartsWith', '').toLowerCase();
+        if (!String(record[field] || '').startsWith(value)) return false;
+      } else if (key.endsWith('NotStartsWithAny')) {
+        // Support comma-separated prefixes: messageNotStartsWithAny="fix,design"
+        const field = key.replace('NotStartsWithAny', '').toLowerCase();
+        const prefixes = value.split(',');
+        const fieldValue = String(record[field] || '');
+        if (prefixes.some(prefix => fieldValue.startsWith(prefix))) return false;
+      } else {
+        if (record[key] !== value) return false;
+      }
+    }
+    return true;
+  });
+  return hasMatch ? options.fn(this) : options.inverse(this);
+});
+
 interface GitLogSettings {
   directories: string[];
   authorEmail: string;
   outputTemplate: string;
 }
 
-const DEFAULT_TEMPLATE = `{{#if commits}}
-### Commits
+const DEFAULT_TEMPLATE = `{{#each repositories}}
+{{#if (or commits staged unstaged)}}
+### {{name}}
+{{#if commits}}
+#### Commits
 {{#each commits}}
-- {{time}} [{{repo}}] {{message}}
+- {{time}} {{message}}
 {{/each}}
 {{/if}}
-
 {{#if staged}}
-### Staged
+#### Staged
 {{#each staged}}
-- [{{repo}}] {{file}}
+- {{file}}
 {{/each}}
 {{/if}}
-
 {{#if unstaged}}
-### Unstaged
+#### Unstaged
 {{#each unstaged}}
-- [{{repo}}] {{file}}
+- {{file}}
 {{/each}}
 {{/if}}
-
+{{/if}}
+{{/each}}
 ({{timestamp}})
 
 ---
@@ -166,6 +199,19 @@ export class GitLogSummaryPlugin extends Plugin {
     // Sort commits by time
     allLogs.sort((a, b) => a.time.localeCompare(b.time));
 
+    // Get repository names from settings
+    const repoNames = this.settings.directories
+      .filter(dir => dir.trim())
+      .map(dir => dir.split('/').pop() || dir);
+
+    // Group by repository
+    const repositories = repoNames.map(name => ({
+      name,
+      commits: allLogs.filter(c => c.repo === name),
+      staged: stagedChanges.filter(s => s.repo === name),
+      unstaged: unstagedChanges.filter(u => u.repo === name),
+    }));
+
     // Generate timestamp
     const now = new Date();
     const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -177,6 +223,7 @@ export class GitLogSummaryPlugin extends Plugin {
         commits: allLogs,
         staged: stagedChanges,
         unstaged: unstagedChanges,
+        repositories,
         timestamp,
       });
     } catch (e) {
@@ -238,14 +285,13 @@ class GitLogSettingTab extends PluginSettingTab {
     formatDesc.innerHTML = `
       <p>Uses <a href="https://handlebarsjs.com/guide/" target="_blank">Handlebars</a> template syntax:</p>
       <ul>
-        <li><code>{{#if commits}}...{{/if}}</code> - Show section if commits exist</li>
-        <li><code>{{#each commits}}...{{/each}}</code> - Loop over commits</li>
-        <li><code>{{#each (array "a" "b")}}...{{/each}}</code> - Loop over inline array</li>
-        <li><code>{{#eq repo "my-repo"}}...{{/eq}}</code> - Equal comparison</li>
-        <li><code>{{#contains message "api"}}...{{/contains}}</code> - Check if contains string</li>
+        <li><code>{{#each repositories}}...{{/each}}</code> - Loop over repositories (each has <code>name</code>, <code>commits</code>, <code>staged</code>, <code>unstaged</code>)</li>
+        <li><code>{{#if (or commits staged unstaged)}}...{{/if}}</code> - Show if any items exist</li>
+        <li><code>{{#some commits messageStartsWith="fix"}}...{{/some}}</code> - Check if any item matches</li>
+        <li><code>{{#eq name "my-repo"}}...{{/eq}}</code> - Equal comparison</li>
         <li><code>{{#startsWith message "fix"}}...{{/startsWith}}</code> - Check if starts with</li>
-        <li>Commit: <code>{{time}}</code>, <code>{{repo}}</code>, <code>{{message}}</code></li>
-        <li>File: <code>{{repo}}</code>, <code>{{file}}</code></li>
+        <li>Commit: <code>{{time}}</code>, <code>{{message}}</code></li>
+        <li>File: <code>{{file}}</code></li>
         <li><code>{{timestamp}}</code> - Current date/time</li>
       </ul>
     `;
