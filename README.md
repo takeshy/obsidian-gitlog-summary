@@ -2,12 +2,7 @@
 
 An Obsidian plugin that inserts today's git log summary into your notes.
 
-## Screenshots
-
-### Usage
-![Usage](image.png)
-
-### Settings
+## Settings
 ![Settings](settings.png)
 
 ## Features
@@ -24,16 +19,134 @@ An Obsidian plugin that inserts today's git log summary into your notes.
 The plugin inserts a formatted summary like this:
 
 ```markdown
-### Commits
-- 09:30 [project-a] Add new feature
-- 10:45 [project-b] Fix bug in login
+### project-a
+#### Commits
+- 09:30 Add new feature
+#### Staged
+- src/index.ts
 
-### Staged
-- [project-a] src/index.ts
+### project-b
+#### Commits
+- 10:45 Fix bug in login
+#### Unstaged
+- README.md
+- config.json (new)
 
-### Unstaged
-- [project-b] README.md
-- [project-b] config.json (new)
+(2024-01-15 16:30)
+```
+
+## Template Customization
+
+The output format can be customized using [Handlebars](https://handlebarsjs.com/) template syntax in the settings.
+
+### Available Variables
+
+| Context | Variables |
+|---------|-----------|
+| Commits | `{{time}}`, `{{repo}}`, `{{message}}` |
+| Staged/Unstaged | `{{repo}}`, `{{file}}` |
+| Global | `{{repositories}}`, `{{timestamp}}` |
+
+- `{{repositories}}` - Array of repository objects, each with `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}`
+
+### Built-in Helpers
+
+- `{{#if commits}}...{{/if}}` - Conditional rendering
+- `{{#each commits}}...{{/each}}` - Loop over items
+- `{{#unless}}...{{/unless}}` - Negative conditional
+- `{{else}}` - Else clause
+
+### Custom Helpers
+
+- `{{#eq value "string"}}...{{else}}...{{/eq}}` - Equal comparison
+- `{{#ne value "string"}}...{{/ne}}` - Not equal comparison
+- `{{#contains value "substring"}}...{{/contains}}` - String contains check
+- `{{#startsWith value "prefix"}}...{{/startsWith}}` - String starts with check
+- `(array "a" "b" "c")` - Create inline array for use with `{{#each}}`
+- `{{#some array field="value"}}...{{/some}}` - Check if any item matches conditions
+  - `fieldStartsWith="prefix"` - prefix matching (e.g., `messageStartsWith="fix"`)
+  - `fieldNotStartsWithAny="a,b"` - exclude multiple prefixes
+- `(or a b c)` - Returns true if any value is truthy (for arrays, checks length > 0)
+
+### Template Examples
+
+#### Group commits by repository and type
+
+This example groups commits by repository, then by type (Bug fixes, Design, Features).
+
+**Prerequisites:**
+- Commits are categorized by message prefix:
+  - `fix` prefix → Bug fixes
+  - `design` prefix → Design
+  - Other → Features
+- Display names (`frontend`, `backend`) can be customized in the `{{#eq}}` blocks
+
+```handlebars
+{{#each repositories}}
+{{#if (or commits staged unstaged)}}
+### {{#eq name "my-app"}}frontend{{else}}{{#eq name "api-server"}}backend{{else}}{{name}}{{/eq}}{{/eq}}
+{{#some commits messageStartsWith="fix"}}
+#### Bug fixes
+{{#each commits}}
+{{#startsWith message "fix"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#some commits messageStartsWith="design"}}
+#### Design
+{{#each commits}}
+{{#startsWith message "design"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#some commits messageNotStartsWithAny="fix,design"}}
+#### Features
+{{#each commits}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+- {{time}} {{message}}
+{{/startsWith}}{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#if staged}}
+#### Staged
+{{#each staged}}
+- {{file}}
+{{/each}}
+{{/if}}
+{{#if unstaged}}
+#### Unstaged
+{{#each unstaged}}
+- {{file}}
+{{/each}}
+{{/if}}
+{{/if}}
+{{/each}}
+
+({{timestamp}})
+```
+
+Output:
+```markdown
+### frontend
+#### Bug fixes
+- 10:30 fix: resolve login issue
+- 14:00 fix: handle null pointer
+#### Design
+- 11:00 design: update button styles
+#### Features
+- 09:00 add user profile page
+#### Staged
+- src/components/Button.tsx
+
+### backend
+#### Features
+- 12:00 add health check endpoint
+#### Unstaged
+- README.md
+
+(2024-01-15 16:30)
 ```
 
 ## Installation

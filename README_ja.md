@@ -2,12 +2,7 @@
 
 今日の Git ログをノートに挿入する Obsidian プラグインです。
 
-## スクリーンショット
-
-### 使用例
-![使用例](image.png)
-
-### 設定画面
+## 設定画面
 ![設定画面](settings.png)
 
 ## 機能
@@ -24,16 +19,134 @@
 以下のような形式でサマリーが挿入されます：
 
 ```markdown
-### Commits
-- 09:30 [project-a] 新機能を追加
-- 10:45 [project-b] ログインのバグを修正
+### project-a
+#### Commits
+- 09:30 新機能を追加
+#### Staged
+- src/index.ts
 
-### Staged 
-- [project-a] src/index.ts
+### project-b
+#### Commits
+- 10:45 ログインのバグを修正
+#### Unstaged
+- README.md
+- config.json (new)
 
-### Unstaged
-- [project-b] README.md
-- [project-b] config.json (new)
+(2024-01-15 16:30)
+```
+
+## テンプレートのカスタマイズ
+
+出力フォーマットは設定画面で [Handlebars](https://handlebarsjs.com/) テンプレート構文を使ってカスタマイズできます。
+
+### 使用可能な変数
+
+| コンテキスト | 変数 |
+|---------|-----------|
+| コミット | `{{time}}`, `{{repo}}`, `{{message}}` |
+| Staged/Unstaged | `{{repo}}`, `{{file}}` |
+| グローバル | `{{repositories}}`, `{{timestamp}}` |
+
+- `{{repositories}}` - リポジトリオブジェクトの配列。各要素は `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}` を持つ
+
+### 組み込みヘルパー
+
+- `{{#if commits}}...{{/if}}` - 条件付きレンダリング
+- `{{#each commits}}...{{/each}}` - ループ
+- `{{#unless}}...{{/unless}}` - 否定条件
+- `{{else}}` - else 節
+
+### カスタムヘルパー
+
+- `{{#eq value "string"}}...{{else}}...{{/eq}}` - 等価比較
+- `{{#ne value "string"}}...{{/ne}}` - 非等価比較
+- `{{#contains value "substring"}}...{{/contains}}` - 文字列を含むかチェック
+- `{{#startsWith value "prefix"}}...{{/startsWith}}` - 文字列が指定の接頭辞で始まるかチェック
+- `(array "a" "b" "c")` - `{{#each}}` で使用するインライン配列を作成
+- `{{#some array field="value"}}...{{/some}}` - 条件に一致するアイテムがあるかチェック
+  - `fieldStartsWith="prefix"` - プレフィックスマッチング（例: `messageStartsWith="fix"`）
+  - `fieldNotStartsWithAny="a,b"` - 複数のプレフィックスを除外
+- `(or a b c)` - いずれかの値が truthy なら true を返す（配列の場合は length > 0 をチェック）
+
+### テンプレート例
+
+#### コミットをリポジトリとタイプ別にグループ化
+
+この例では、コミットをリポジトリ別に分け、さらにバグ修正、デザイン、機能追加に分類します。
+
+**前提条件：**
+- コミットはメッセージの接頭辞で分類されます：
+  - `fix` で始まる → バグ修正
+  - `design` で始まる → デザイン
+  - その他 → 機能追加
+- 表示名（`フロントエンド`、`バックエンド`）は `{{#eq}}` ブロック内でカスタマイズ可能です
+
+```handlebars
+{{#each repositories}}
+{{#if (or commits staged unstaged)}}
+### {{#eq name "my-app"}}フロントエンド{{else}}{{#eq name "api-server"}}バックエンド{{else}}{{name}}{{/eq}}{{/eq}}
+{{#some commits messageStartsWith="fix"}}
+#### バグ修正
+{{#each commits}}
+{{#startsWith message "fix"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#some commits messageStartsWith="design"}}
+#### デザイン
+{{#each commits}}
+{{#startsWith message "design"}}
+- {{time}} {{message}}
+{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#some commits messageNotStartsWithAny="fix,design"}}
+#### 機能追加
+{{#each commits}}
+{{#startsWith message "fix"}}{{else}}{{#startsWith message "design"}}{{else}}
+- {{time}} {{message}}
+{{/startsWith}}{{/startsWith}}
+{{/each}}
+{{/some}}
+{{#if staged}}
+#### Staged
+{{#each staged}}
+- {{file}}
+{{/each}}
+{{/if}}
+{{#if unstaged}}
+#### Unstaged
+{{#each unstaged}}
+- {{file}}
+{{/each}}
+{{/if}}
+{{/if}}
+{{/each}}
+
+({{timestamp}})
+```
+
+出力：
+```markdown
+### フロントエンド
+#### バグ修正
+- 10:30 fix: ログイン問題を解決
+- 14:00 fix: null ポインタを処理
+#### デザイン
+- 11:00 design: ボタンスタイルを更新
+#### 機能追加
+- 09:00 ユーザープロフィールページを追加
+#### Staged
+- src/components/Button.tsx
+
+### バックエンド
+#### 機能追加
+- 12:00 ヘルスチェックエンドポイントを追加
+#### Unstaged
+- README.md
+
+(2024-01-15 16:30)
 ```
 
 ## インストール
