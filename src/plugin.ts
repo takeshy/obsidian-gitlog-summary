@@ -70,7 +70,7 @@ const DEFAULT_TEMPLATE = `{{#each repositories~}}
 {{#if commits}}
 ### Commits
 {{#each commits~}}
-- {{time}} {{message}}
+- {{time}} [{{branch}}] {{message}}
 {{/each}}
 {{/if~}}
 {{#if staged}}
@@ -132,7 +132,7 @@ export class GitLogSummaryPlugin extends Plugin {
     const today = new Date();
     const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 
-    const allLogs: { time: string; message: string; repo: string }[] = [];
+    const allLogs: { time: string; message: string; repo: string; branch: string }[] = [];
     const stagedChanges: { repo: string; file: string }[] = [];
     const unstagedChanges: { repo: string; file: string }[] = [];
 
@@ -142,22 +142,62 @@ export class GitLogSummaryPlugin extends Plugin {
       const repoName = dir.split('/').pop() || dir;
 
       try {
-        // コミット済みのログ
+        // git reflogで今日更新があったブランチを取得
+        const branches = new Set<string>();
+        try {
+          const reflogCmd = `cd "${dir}" && git reflog --all --since="${dateStr} 00:00" --format="%gD"`;
+          const { stdout: reflogOutput } = await execAsync(reflogCmd);
+
+          if (reflogOutput.trim()) {
+            for (const line of reflogOutput.trim().split('\n')) {
+              // refs/heads/branch-name@{N} -> branch-name
+              const match = line.match(/refs\/heads\/([^@]+)@/);
+              if (match) {
+                branches.add(match[1]);
+              }
+            }
+          }
+        } catch {
+          // reflogが失敗した場合は無視
+        }
+
+        // ブランチが見つからない場合は現在のブランチを使用
+        if (branches.size === 0) {
+          try {
+            const { stdout: currentBranch } = await execAsync(`cd "${dir}" && git rev-parse --abbrev-ref HEAD`);
+            branches.add(currentBranch.trim());
+          } catch {
+            // 現在のブランチも取得できない場合はスキップ
+            continue;
+          }
+        }
+
+        // コミット済みのログ（各ブランチから取得、ハッシュで重複除去）
         const authorFilter = this.settings.authorEmail
           ? `--author="${this.settings.authorEmail}"`
           : '';
 
-        const logCmd = `cd "${dir}" && git log --since="${dateStr} 00:00" --until="${dateStr} 23:59" ${authorFilter} --pretty=format:"%H|%ad|%s" --date=format:"%H:%M"`;
+        const seenHashes = new Set<string>();
 
-        const { stdout: logOutput } = await execAsync(logCmd);
+        for (const branch of branches) {
+          try {
+            const logCmd = `cd "${dir}" && git log "${branch}" --since="${dateStr} 00:00" --until="${dateStr} 23:59" ${authorFilter} --pretty=format:"%H|%ad|%s" --date=format:"%H:%M"`;
+            const { stdout: logOutput } = await execAsync(logCmd);
 
-        if (logOutput.trim()) {
-          const lines = logOutput.trim().split('\n');
+            if (logOutput.trim()) {
+              const lines = logOutput.trim().split('\n');
 
-          for (const line of lines) {
-            const [_hash, time, ...messageParts] = line.split('|');
-            const message = messageParts.join('|');
-            allLogs.push({ time, message, repo: repoName });
+              for (const line of lines) {
+                const [hash, time, ...messageParts] = line.split('|');
+                if (seenHashes.has(hash)) continue;
+                seenHashes.add(hash);
+
+                const message = messageParts.join('|');
+                allLogs.push({ time, message, repo: repoName, branch });
+              }
+            }
+          } catch {
+            // ブランチのログ取得に失敗した場合は無視
           }
         }
 
@@ -290,7 +330,7 @@ class GitLogSettingTab extends PluginSettingTab {
         <li><code>{{#some commits messageStartsWith="fix"}}...{{/some}}</code> - Check if any item matches</li>
         <li><code>{{#eq name "my-repo"}}...{{/eq}}</code> - Equal comparison</li>
         <li><code>{{#startsWith message "fix"}}...{{/startsWith}}</code> - Check if starts with</li>
-        <li>Commit: <code>{{time}}</code>, <code>{{message}}</code></li>
+        <li>Commit: <code>{{time}}</code>, <code>{{message}}</code>, <code>{{branch}}</code></li>
         <li>File: <code>{{file}}</code></li>
         <li><code>{{timestamp}}</code> - Current date/time</li>
       </ul>
