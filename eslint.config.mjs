@@ -12,7 +12,7 @@ export default [
         argsIgnorePattern: '^_',
         varsIgnorePattern: '^_',
       }],
-      'obsidianmd/ui/sentence-case': 'warn',
+      'obsidianmd/ui/sentence-case': 'off',
     },
   },
 ];

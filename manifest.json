@@ -1,10 +1,11 @@
 {
 	"id": "gitlog-summary",
 	"name": "Git Log Summary",
-	"version": "1.1.2",
+	"version": "1.2.0",
 	"minAppVersion": "0.15.0",
-	"description": "Insert today's git log summary into your notes",
+	"description": "Insert git log summary into your notes with branch status and date selection",
 	"author": "takeshy",
 	"authorUrl": "https://github.com/takeshy",
+	"fundingUrl": "https://github.com/takeshy",
 	"isDesktopOnly": true
 }

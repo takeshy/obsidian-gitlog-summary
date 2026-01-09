@@ -8,7 +8,9 @@ An Obsidian plugin that inserts today's git log summary into your notes.
 ## Features
 
 - **Today's commits** - Insert all commits from today across multiple repositories
+- **Date selection** - Insert git log for any specific date
 - **Multiple repositories** - Monitor multiple git directories at once
+- **Branch push status** - Shows whether each branch is pushed to remote
 - **Staged changes** - Shows files that are staged but not yet committed
 - **Unstaged changes** - Shows modified and untracked files
 - **Author filtering** - Filter commits by author email (optional)
@@ -20,14 +22,20 @@ The plugin inserts a formatted summary like this:
 
 ```markdown
 ## project-a
+### Branches
+- main (pushed)
+- feature-branch (unpushed: 2)
 ### Commits
-- 09:30 Add new feature
+- 09:30 [main] Add new feature
 ### Staged
 - src/index.ts
 
 ## project-b
+### Branches
+- main (pushed)
+- develop (unpushed: 1)
 ### Commits
-- 10:45 Fix bug in login
+- 10:45 [main] Fix bug in login
 ### Unstaged
 - README.md
 - config.json (new)
@@ -43,11 +51,14 @@ The output format can be customized using [Handlebars](https://handlebarsjs.com/
 
 | Context | Variables |
 |---------|-----------|
-| Commits | `{{time}}`, `{{repo}}`, `{{message}}` |
+| Commits | `{{time}}`, `{{branch}}`, `{{repo}}`, `{{message}}` |
+| Branches | `{{name}}`, `{{isPushed}}`, `{{unpushedCount}}` |
 | Staged/Unstaged | `{{repo}}`, `{{file}}` |
 | Global | `{{repositories}}`, `{{timestamp}}` |
 
-- `{{repositories}}` - Array of repository objects, each with `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}`
+- `{{repositories}}` - Array of repository objects, each with `{{name}}`, `{{commits}}`, `{{staged}}`, `{{unstaged}}`, `{{branches}}`
+- `{{isPushed}}` - Boolean indicating if branch is pushed to remote
+- `{{unpushedCount}}` - Number of unpushed commits (-1 if remote branch doesn't exist)
 
 ### Built-in Helpers
 
@@ -177,12 +188,25 @@ Specify the git repositories to monitor, one per line.
 
 **Important:** Full path required (e.g., `/home/user/project`). The `~` shortcut is not supported.
 
+### WSL Support (Windows)
+
+On Windows, you can use WSL (Windows Subsystem for Linux) repositories by specifying the UNC path:
+
+```
+\\wsl.localhost\Ubuntu\home\user\project
+\\wsl$\Ubuntu\home\user\project
+```
+
+Both `\\wsl.localhost\` and `\\wsl$\` formats are supported. The plugin will automatically detect WSL paths and execute git commands through WSL.
+
 ## Usage
 
 1. Open a note where you want to insert the git log
 2. Open the command palette (Ctrl/Cmd + P)
-3. Search for "Insert today's Git log"
-4. The git log summary will be inserted at the cursor position
+3. Choose a command:
+   - **Insert today's Git log** - Insert today's commits
+   - **Insert Git log for date** - Opens a dialog to select a specific date (YYYY-MM-DD format)
+4. The git log summary will be appended to the end of the note
 
 ## Requirements
 

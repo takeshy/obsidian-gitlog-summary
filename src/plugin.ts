@@ -1,9 +1,45 @@
-import { Plugin, Editor, PluginSettingTab, App, Setting, Notice } from 'obsidian';
-import { exec } from 'child_process';
+import { Plugin, Editor, PluginSettingTab, App, Setting, Notice, Modal, TextComponent } from 'obsidian';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import * as Handlebars from 'handlebars';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// WSL UNCパスの情報を解析
+function parseWslPath(dir: string): { isWsl: boolean; distro?: string; wslPath?: string } {
+  const wslMatch = dir.match(/^\\\\wsl(?:\.localhost|\$)\\([^\\]+)\\(.+)$/i);
+  if (wslMatch) {
+    return {
+      isWsl: true,
+      distro: wslMatch[1],
+      wslPath: '/' + wslMatch[2].replace(/\\/g, '/'),
+    };
+  }
+  return { isWsl: false };
+}
+
+// gitコマンドを実行
+async function runGitCommand(dir: string, gitCommand: string): Promise<string> {
+  const wslInfo = parseWslPath(dir);
+  if (wslInfo.isWsl) {
+    // WSLの場合はexecFileで直接wslを呼び出す（シェルを通さない）
+    const bashCmd = `cd "${wslInfo.wslPath}" && ${gitCommand}`;
+    const { stdout } = await execFileAsync('wsl', ['-d', wslInfo.distro!, '--', 'bash', '-c', bashCmd]);
+    return stdout;
+  }
+  // 通常のパス
+  const cmd = `cd "${dir}" && ${gitCommand}`;
+  const { stdout } = await execAsync(cmd);
+  return stdout;
+}
+
+// パスからリポジトリ名を取得（WSLパスとUnixパス両対応）
+function getRepoName(dir: string): string {
+  // バックスラッシュとスラッシュの両方で分割
+  const parts = dir.split(/[/\\]/).filter(p => p);
+  return parts[parts.length - 1] || dir;
+}
 
 // Register custom helpers
 Handlebars.registerHelper('eq', function(this: unknown, a: unknown, b: unknown, options: Handlebars.HelperOptions) {
@@ -67,6 +103,12 @@ interface GitLogSettings {
 const DEFAULT_TEMPLATE = `{{#each repositories~}}
 {{#if (or commits staged unstaged)}}
 ## {{name}}
+{{#if branches}}
+### Branches
+{{#each branches~}}
+- {{name}}{{#if isPushed}} (pushed){{else}} (unpushed{{#if (ne unpushedCount -1)}}: {{unpushedCount}}{{/if}}){{/if}}
+{{/each}}
+{{/if~}}
 {{#if commits}}
 ### Commits
 {{#each commits~}}
@@ -108,12 +150,35 @@ export class GitLogSummaryPlugin extends Plugin {
       id: 'insert-today-gitlog',
       name: "Insert today's Git log",
       editorCallback: async (editor: Editor) => {
-        const output = await this.getTodayGitLogs();
+        const output = await this.getGitLogs();
         if (!output.trim()) {
           new Notice('No commits found for today');
           return;
         }
-        editor.replaceSelection(output);
+        // ノートの最後に追記
+        const lastLine = editor.lastLine();
+        const lastLineLength = editor.getLine(lastLine).length;
+        editor.setCursor({ line: lastLine, ch: lastLineLength });
+        editor.replaceSelection('\n' + output);
+      },
+    });
+
+    this.addCommand({
+      id: 'insert-gitlog-for-date',
+      name: 'Insert Git log for date',
+      editorCallback: (editor: Editor) => {
+        new DateInputModal(this.app, async (dateStr: string) => {
+          const output = await this.getGitLogs(dateStr);
+          if (!output.trim()) {
+            new Notice(`No commits found for ${dateStr}`);
+            return;
+          }
+          // ノートの最後に追記
+          const lastLine = editor.lastLine();
+          const lastLineLength = editor.getLine(lastLine).length;
+          editor.setCursor({ line: lastLine, ch: lastLineLength });
+          editor.replaceSelection('\n' + output);
+        }).open();
       },
     });
 
@@ -128,25 +193,28 @@ export class GitLogSummaryPlugin extends Plugin {
     await this.saveData(this.settings);
   }
 
-  async getTodayGitLogs(): Promise<string> {
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  async getGitLogs(dateStr?: string): Promise<string> {
+    if (!dateStr) {
+      const today = new Date();
+      dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    }
 
     const allLogs: { time: string; message: string; repo: string; branch: string }[] = [];
     const stagedChanges: { repo: string; file: string }[] = [];
     const unstagedChanges: { repo: string; file: string }[] = [];
+    const branchStatuses: { repo: string; name: string; isPushed: boolean; unpushedCount: number }[] = [];
 
     for (const dir of this.settings.directories) {
       if (!dir.trim()) continue;
 
-      const repoName = dir.split('/').pop() || dir;
+      const repoName = getRepoName(dir);
 
       try {
         // git reflogで今日更新があったブランチを取得
         const branches = new Set<string>();
         try {
-          const reflogCmd = `cd "${dir}" && git reflog --all --since="${dateStr} 00:00" --format="%gD"`;
-          const { stdout: reflogOutput } = await execAsync(reflogCmd);
+          const reflogGitCmd = `git reflog --all --since="${dateStr} 00:00" --format="%gD"`;
+          const reflogOutput = await runGitCommand(dir, reflogGitCmd);
 
           if (reflogOutput.trim()) {
             for (const line of reflogOutput.trim().split('\n')) {
@@ -164,7 +232,8 @@ export class GitLogSummaryPlugin extends Plugin {
         // ブランチが見つからない場合は現在のブランチを使用
         if (branches.size === 0) {
           try {
-            const { stdout: currentBranch } = await execAsync(`cd "${dir}" && git rev-parse --abbrev-ref HEAD`);
+            const branchGitCmd = 'git rev-parse --abbrev-ref HEAD';
+            const currentBranch = await runGitCommand(dir, branchGitCmd);
             branches.add(currentBranch.trim());
           } catch {
             // 現在のブランチも取得できない場合はスキップ
@@ -181,8 +250,8 @@ export class GitLogSummaryPlugin extends Plugin {
 
         for (const branch of branches) {
           try {
-            const logCmd = `cd "${dir}" && git log "${branch}" --since="${dateStr} 00:00" --until="${dateStr} 23:59" ${authorFilter} --pretty=format:"%H|%ad|%s" --date=format:"%H:%M"`;
-            const { stdout: logOutput } = await execAsync(logCmd);
+            const logGitCmd = `git log "${branch}" --since="${dateStr} 00:00" --until="${dateStr} 23:59" ${authorFilter} --pretty=format:"%H|%ad|%s" --date=format:"%H:%M"`;
+            const logOutput = await runGitCommand(dir, logGitCmd);
 
             if (logOutput.trim()) {
               const lines = logOutput.trim().split('\n');
@@ -201,9 +270,32 @@ export class GitLogSummaryPlugin extends Plugin {
           }
         }
 
+        // 各ブランチのpush状態を確認
+        for (const branch of branches) {
+          try {
+            // リモートブランチとの差分を確認
+            const unpushedGitCmd = `git log origin/${branch}..${branch} --oneline 2>/dev/null | wc -l`;
+            const unpushedOutput = await runGitCommand(dir, unpushedGitCmd);
+            const unpushedCount = parseInt(unpushedOutput.trim(), 10) || 0;
+            branchStatuses.push({
+              repo: repoName,
+              name: branch,
+              isPushed: unpushedCount === 0,
+              unpushedCount,
+            });
+          } catch {
+            // リモートブランチが存在しない場合は未push扱い
+            branchStatuses.push({
+              repo: repoName,
+              name: branch,
+              isPushed: false,
+              unpushedCount: -1, // リモートなし
+            });
+          }
+        }
+
         // Staged (addされているがコミットされていない)
-        const stagedCmd = `cd "${dir}" && git diff --cached --name-only`;
-        const { stdout: stagedOutput } = await execAsync(stagedCmd);
+        const stagedOutput = await runGitCommand(dir, 'git diff --cached --name-only');
 
         if (stagedOutput.trim()) {
           for (const file of stagedOutput.trim().split('\n')) {
@@ -212,8 +304,7 @@ export class GitLogSummaryPlugin extends Plugin {
         }
 
         // Unstaged (addもされていない変更)
-        const unstagedCmd = `cd "${dir}" && git diff --name-only`;
-        const { stdout: unstagedOutput } = await execAsync(unstagedCmd);
+        const unstagedOutput = await runGitCommand(dir, 'git diff --name-only');
 
         if (unstagedOutput.trim()) {
           for (const file of unstagedOutput.trim().split('\n')) {
@@ -222,8 +313,7 @@ export class GitLogSummaryPlugin extends Plugin {
         }
 
         // Untracked (新規ファイル)
-        const untrackedCmd = `cd "${dir}" && git ls-files --others --exclude-standard`;
-        const { stdout: untrackedOutput } = await execAsync(untrackedCmd);
+        const untrackedOutput = await runGitCommand(dir, 'git ls-files --others --exclude-standard');
 
         if (untrackedOutput.trim()) {
           for (const file of untrackedOutput.trim().split('\n')) {
@@ -242,7 +332,7 @@ export class GitLogSummaryPlugin extends Plugin {
     // Get repository names from settings
     const repoNames = this.settings.directories
       .filter(dir => dir.trim())
-      .map(dir => dir.split('/').pop() || dir);
+      .map(dir => getRepoName(dir));
 
     // Group by repository
     const repositories = repoNames.map(name => ({
@@ -250,6 +340,7 @@ export class GitLogSummaryPlugin extends Plugin {
       commits: allLogs.filter(c => c.repo === name),
       staged: stagedChanges.filter(s => s.repo === name),
       unstaged: unstagedChanges.filter(u => u.repo === name),
+      branches: branchStatuses.filter(b => b.repo === name),
     }));
 
     // Generate timestamp
@@ -271,6 +362,59 @@ export class GitLogSummaryPlugin extends Plugin {
       new Notice('Template error: ' + (e as Error).message);
       return '';
     }
+  }
+}
+
+class DateInputModal extends Modal {
+  private onSubmit: (date: string) => void;
+  private dateInput!: TextComponent;
+
+  constructor(app: App, onSubmit: (date: string) => void) {
+    super(app);
+    this.onSubmit = onSubmit;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl('h2', { text: 'Enter date' });
+
+    const today = new Date();
+    const defaultDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    new Setting(contentEl)
+      .setName('Date')
+      .setDesc('Format: YYYY-MM-DD')
+      .addText(text => {
+        this.dateInput = text;
+        text.setPlaceholder('YYYY-MM-DD')
+          .setValue(defaultDate);
+        text.inputEl.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            this.submit();
+          }
+        });
+      });
+
+    new Setting(contentEl)
+      .addButton(btn => btn
+        .setButtonText('Insert')
+        .setCta()
+        .onClick(() => this.submit()));
+  }
+
+  private submit() {
+    const value = this.dateInput.getValue();
+    if (value && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      this.close();
+      this.onSubmit(value);
+    } else {
+      new Notice('Invalid date format. Use YYYY-MM-DD');
+    }
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
   }
 }
 
@@ -325,12 +469,13 @@ class GitLogSettingTab extends PluginSettingTab {
     formatDesc.innerHTML = `
       <p>Uses <a href="https://handlebarsjs.com/guide/" target="_blank">Handlebars</a> template syntax:</p>
       <ul>
-        <li><code>{{#each repositories}}...{{/each}}</code> - Loop over repositories (each has <code>name</code>, <code>commits</code>, <code>staged</code>, <code>unstaged</code>)</li>
+        <li><code>{{#each repositories}}...{{/each}}</code> - Loop over repositories (each has <code>name</code>, <code>commits</code>, <code>staged</code>, <code>unstaged</code>, <code>branches</code>)</li>
         <li><code>{{#if (or commits staged unstaged)}}...{{/if}}</code> - Show if any items exist</li>
         <li><code>{{#some commits messageStartsWith="fix"}}...{{/some}}</code> - Check if any item matches</li>
         <li><code>{{#eq name "my-repo"}}...{{/eq}}</code> - Equal comparison</li>
         <li><code>{{#startsWith message "fix"}}...{{/startsWith}}</code> - Check if starts with</li>
         <li>Commit: <code>{{time}}</code>, <code>{{message}}</code>, <code>{{branch}}</code></li>
+        <li>Branch: <code>{{name}}</code>, <code>{{isPushed}}</code>, <code>{{unpushedCount}}</code></li>
         <li>File: <code>{{file}}</code></li>
         <li><code>{{timestamp}}</code> - Current date/time</li>
       </ul>
